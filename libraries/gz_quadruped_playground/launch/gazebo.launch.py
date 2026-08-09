@@ -14,6 +14,10 @@ import xacro
 
 
 def launch_setup(context, *args, **kwargs):
+    # External sensors (D435 RGBD, front camera, gpu_lidar). The IMU and foot
+    # force sensors are not affected -- the controllers need them either way.
+    sensors = context.launch_configurations['sensors'].lower() in ('true', '1', 'yes')
+
     # Gazebo World
     world = context.launch_configurations['world']
     default_sdf_path = os.path.join(get_package_share_directory('gz_quadruped_playground'), 'worlds', world + '.sdf')
@@ -35,7 +39,7 @@ def launch_setup(context, *args, **kwargs):
     xacro_file = os.path.join(pkg_path, 'xacro', 'robot.xacro')
     robot_description = xacro.process_file(xacro_file, mappings={
         'GAZEBO': 'true',
-        'EXTERNAL_SENSORS': 'true'
+        'EXTERNAL_SENSORS': 'true' if sensors else 'false'
     }).toxml()
     robot_state_publisher = Node(
         package='robot_state_publisher',
@@ -76,10 +80,34 @@ def launch_setup(context, *args, **kwargs):
         arguments=["-d", rviz_config_file]
     )
 
-    return [
+    # /clock is always bridged; the sensor topics only exist when the sensors do.
+    bridge_args = ["/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock"]
+    if sensors:
+        bridge_args += [
+            "/camera/camera_info@sensor_msgs/msg/CameraInfo@gz.msgs.CameraInfo",
+            "/scan@sensor_msgs/msg/LaserScan@gz.msgs.LaserScan",
+            "/scan/points@sensor_msgs/msg/PointCloud2@gz.msgs.PointCloudPacked",
+            "/rgbd_d435/points@sensor_msgs/msg/PointCloud2@gz.msgs.PointCloudPacked"
+            # "/odom@nav_msgs/msg/Odometry@gz.msgs.Odometry",
+            # "/odom_with_covariance@nav_msgs/msg/Odometry@gz.msgs.OdometryWithCovariance",
+            # "/tf@tf2_msgs/msg/TFMessage@gz.msgs.Pose_V"
+        ]
+
+    gz_bridge_node = Node(
+        package="ros_gz_bridge",
+        executable="parameter_bridge",
+        arguments=bridge_args,
+        output="screen",
+        parameters=[
+            {'use_sim_time': True},
+        ]
+    )
+
+    nodes = [
         rviz,
         robot_state_publisher,
         gz_spawn_entity,
+        gz_bridge_node,
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
                 [PathJoinSubstitution([FindPackageShare('ros_gz_sim'),
@@ -88,6 +116,24 @@ def launch_setup(context, *args, **kwargs):
             launch_arguments=[('gz_args', [' -r -v 4 ', default_sdf_path])]),
         controller_launch
     ]
+
+    if sensors:
+        nodes.append(Node(
+            package="ros_gz_image",
+            executable="image_bridge",
+            arguments=[
+                "/camera/image",
+                '/rgbd_d435/depth_image',
+                '/rgbd_d435/image',
+            ],
+            output="screen",
+            parameters=[
+                {'use_sim_time': True,
+                 'camera.image.compressed.jpeg_quality': 75},
+            ],
+        ))
+
+    return nodes
 
 
 def generate_launch_description():
@@ -115,38 +161,10 @@ def generate_launch_description():
         description='The ROS2-Control Controllers'
     )
 
-    gz_bridge_node = Node(
-        package="ros_gz_bridge",
-        executable="parameter_bridge",
-        arguments=[
-            "/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock",
-            "/camera/camera_info@sensor_msgs/msg/CameraInfo@gz.msgs.CameraInfo",
-            "/scan@sensor_msgs/msg/LaserScan@gz.msgs.LaserScan",
-            "/scan/points@sensor_msgs/msg/PointCloud2@gz.msgs.PointCloudPacked",
-            "/rgbd_d435/points@sensor_msgs/msg/PointCloud2@gz.msgs.PointCloudPacked"
-            # "/odom@nav_msgs/msg/Odometry@gz.msgs.Odometry",
-            # "/odom_with_covariance@nav_msgs/msg/Odometry@gz.msgs.OdometryWithCovariance",
-            # "/tf@tf2_msgs/msg/TFMessage@gz.msgs.Pose_V"
-        ],
-        output="screen",
-        parameters=[
-            {'use_sim_time': True},
-        ]
-    )
-
-    gz_image_bridge_node = Node(
-        package="ros_gz_image",
-        executable="image_bridge",
-        arguments=[
-            "/camera/image",
-            '/rgbd_d435/depth_image',
-            '/rgbd_d435/image',
-        ],
-        output="screen",
-        parameters=[
-            {'use_sim_time': True,
-             'camera.image.compressed.jpeg_quality': 75},
-        ],
+    sensors = DeclareLaunchArgument(
+        'sensors',
+        default_value='true',
+        description='Enable the external sensors (D435 RGBD, front camera, lidar)'
     )
 
     return LaunchDescription([
@@ -154,7 +172,6 @@ def generate_launch_description():
         pkg_description,
         height,
         controller,
-        gz_bridge_node,
-        gz_image_bridge_node,
+        sensors,
         OpaqueFunction(function=launch_setup),
     ])
