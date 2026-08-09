@@ -113,6 +113,28 @@ void StateTrotting::calcCmd() {
 
     /* Turning */
     yaw_cmd_ = yaw_cmd_ + d_yaw_cmd_ * dt_;
+
+    // 바로 위 pcd_ 와 대칭을 맞춘다. 위치 명령은 실제 몸통 위치 ±5cm 로 묶어
+    // 두는데 yaw 명령만 순수 적분기라 실제 yaw 와 얼마든지 벌어질 수 있었다.
+    //
+    // 회전 동력은 몸통 자세 PD 가 접촉 마찰로 밀어내는 것뿐이다 — 발 놓는 자리는
+    // 명령 회전을 거의 반영하지 않는다 (FeetEndCalc 의 k_yaw_ = 0.005 는 측정된
+    // 회전만 따라간다). 그래서 실제 회전은 항상 명령보다 뒤처지고, 뒤처지는 만큼
+    // yaw_cmd_ 가 계속 감긴다. 게다가 kp_w_ = 780 인데 calcTau() 가 d_wbd(2) 를
+    // ±10 으로 자르므로 yaw 오차가 10/780 = 0.0128 rad(0.73도)만 넘으면 yaw 토크
+    // 요구가 최대치에 붙박이가 된다. QP 가중치는 모멘트 450 대 힘 20/50 이라
+    // (BalanceCtrl.cpp) 그 상태가 유지되면 몸통 지지력 쪽이 계속 희생된다.
+    // 전진과 회전을 동시에 최대로 주면 몇 걸음 만에 휘청이다 넘어졌다.
+    //
+    // 명령이 실제보다 LEASH 이상 앞서지 못하게 막는다. 회전을 못 따라가면
+    // 느리게 돌 뿐, 토크가 포화된 채 굳지 않는다.
+    constexpr double LEASH = 0.15;   // rad, 약 8.6도
+    double yaw_err = yaw_cmd_ - estimator_->getYaw();
+    yaw_err = atan2(sin(yaw_err), cos(yaw_err));    // ±pi 로 감아서 비교한다
+    if (fabs(yaw_err) > LEASH) {
+        yaw_cmd_ = estimator_->getYaw() + copysign(LEASH, yaw_err);
+    }
+
     Rd = rotz(yaw_cmd_);
     w_cmd_global_(2) = d_yaw_cmd_;
 }

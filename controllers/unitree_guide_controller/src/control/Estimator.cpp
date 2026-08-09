@@ -158,6 +158,24 @@ void Estimator::update() {
     foot_vels_ = robot_model_->getFeet2BVelocities();
     feet_h_.setZero();
 
+    // IMU 를 측정값 조립보다 **먼저** 읽는다. 아래에서 rotation_ 과 gyro_ 로
+    // 발 측정값을 월드로 돌려야 하기 때문이다. (원래는 이 블록이 for 문
+    // 뒤에 있었다 — 그때는 아무도 rotation_ 을 안 썼다.)
+    Quat quat;
+    quat << ctrl_interfaces_.imu_state_interface_[0].get().get_optional().value(),
+            ctrl_interfaces_.imu_state_interface_[1].get().get_optional().value(),
+            ctrl_interfaces_.imu_state_interface_[2].get().get_optional().value(),
+            ctrl_interfaces_.imu_state_interface_[3].get().get_optional().value();
+    rotation_ = quatToRotMat(quat);
+
+    gyro_ << ctrl_interfaces_.imu_state_interface_[4].get().get_optional().value(),
+            ctrl_interfaces_.imu_state_interface_[5].get().get_optional().value(),
+            ctrl_interfaces_.imu_state_interface_[6].get().get_optional().value();
+
+    acceleration_ << ctrl_interfaces_.imu_state_interface_[7].get().get_optional().value(),
+            ctrl_interfaces_.imu_state_interface_[8].get().get_optional().value(),
+            ctrl_interfaces_.imu_state_interface_[9].get().get_optional().value();
+
     // Adjust the covariance based on foot contact and phase.
     for (int i(0); i < 4; ++i) {
         if (wave_generator_->contact_[i] == 0) {
@@ -177,24 +195,34 @@ void Estimator::update() {
             R(24 + i, 24 + i) =
                     (1 + (1 - trust) * large_variance_) * RInit_(24 + i, 24 + i);
         }
-        feet_pos_body_.segment(3 * i, 3) = Vec3(foot_poses_[i].p.data);
-        feet_vel_body_.segment(3 * i, 3) = Vec3(foot_vels_[i].data);
+        // ★ 측정값을 월드 좌표계로 돌려서 넣는다.
+        //
+        // x_hat_ 은 전부 월드 좌표계다:
+        //   - u_ = rotation_*acceleration_ + g_  로 적분하는 속도가 월드
+        //   - C(24,8)=1 로 발의 z 를 0(=지면)과 비교하니 발 위치도 월드
+        // C 행렬도 그 전제로 짜여 있다. C.block(0,0,3,3) = -I3 와
+        // C.block(0,6,12,12) = I12 는 측정값이 "월드에서 본 발 - 몸통" 이라는
+        // 뜻이고, C.block(12,3,3,3) = -I3 는 "월드에서 본 -몸통속도" 라는 뜻이다.
+        //
+        // 그런데 getFeet2BPositions/Velocities 는 KDL 정기구학이라 **몸통
+        // 좌표계**로 준다. 원래 코드는 그걸 그대로 y_ 에 넣었다. 자세가
+        // 단위행렬일 때만(=스폰 방향 그대로, 평지) 우연히 맞는다.
+        //
+        //   yaw 가 θ 면 측정 발 벡터가 통째로 θ 만큼 돌아간 채 들어간다
+        //     → 추정 몸통 속도가 θ 만큼 돌아간다
+        //     → 몸통 PD 가 엉뚱한 방향으로 민다
+        //   회전 중이면 θ 가 계속 변한다
+        //     → 추정 속도가 돌아가며 흔들린다 (전후로 춤추다 넘어진다)
+        //
+        // 속도에는 gyro × p 도 필요하다. 몸통이 돌면 관절이 안 움직여도 발은
+        // 월드에서 움직이는데, J(q)q̇ 에는 그 성분이 없다. 회전 0.5 rad/s 에
+        // 발 거리 0.3m 면 0.15 m/s — 전진 명령(0.4)의 40% 다. 이게 빠지면
+        // 추정기는 디딤발이 뒤로 밀린다고 보고 몸통이 앞으로 간다고 믿는다.
+        const Vec3 p_body = Vec3(foot_poses_[i].p.data);
+        const Vec3 v_body = Vec3(foot_vels_[i].data);
+        feet_pos_body_.segment(3 * i, 3) = rotation_ * p_body;
+        feet_vel_body_.segment(3 * i, 3) = rotation_ * (v_body + gyro_.cross(p_body));
     }
-
-    Quat quat;
-    quat << ctrl_interfaces_.imu_state_interface_[0].get().get_optional().value(),
-            ctrl_interfaces_.imu_state_interface_[1].get().get_optional().value(),
-            ctrl_interfaces_.imu_state_interface_[2].get().get_optional().value(),
-            ctrl_interfaces_.imu_state_interface_[3].get().get_optional().value();
-    rotation_ = quatToRotMat(quat);
-
-    gyro_ << ctrl_interfaces_.imu_state_interface_[4].get().get_optional().value(),
-            ctrl_interfaces_.imu_state_interface_[5].get().get_optional().value(),
-            ctrl_interfaces_.imu_state_interface_[6].get().get_optional().value();
-
-    acceleration_ << ctrl_interfaces_.imu_state_interface_[7].get().get_optional().value(),
-            ctrl_interfaces_.imu_state_interface_[8].get().get_optional().value(),
-            ctrl_interfaces_.imu_state_interface_[9].get().get_optional().value();
 
     u_ = rotation_ * acceleration_ + g_;
     x_hat_ = A * x_hat_ + B * u_;

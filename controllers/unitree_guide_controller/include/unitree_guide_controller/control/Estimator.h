@@ -66,7 +66,12 @@ public:
         const std::vector<KDL::Vector> feet_vel = robot_model_->getFeet2BVelocities();
         Vec34 result;
         for (int i(0); i < 4; ++i) {
-            result.col(i) = Vec3(feet_vel[i].data) + getVelocity();
+            // getFootPos() 와 같은 규칙으로 맞춘다. J(q)q̇ 는 몸통 좌표계이고
+            // 몸통 회전분(gyro × p)이 빠져 있다. 그대로 월드 속도에 더하면
+            // 몸통이 돌 때 스윙 발 속도가 틀린다 (Estimator.cpp 의 같은 설명 참고).
+            const Vec3 p_body(foot_poses_[i].p.data);
+            result.col(i) = rotation_ * (Vec3(feet_vel[i].data) + gyro_.cross(p_body))
+                            + getVelocity();
         }
         return result;
     }
