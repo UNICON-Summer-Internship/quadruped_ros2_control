@@ -18,6 +18,14 @@ def launch_setup(context, *args, **kwargs):
     # force sensors are not affected -- the controllers need them either way.
     sensors = context.launch_configurations['sensors'].lower() in ('true', '1', 'yes')
 
+    # Physics engine. gz-sim does NOT read <physics type="..."> from the world --
+    # that is Gazebo Classic syntax. The engine comes from --physics-engine (here)
+    # or the Physics system plugin's <engine><filename>. Leave empty for the
+    # default (dartsim). Useful because the pipeline terrain is a triangle mesh,
+    # and mesh contact handling differs a lot between engines.
+    engine = context.launch_configurations['physics_engine'].strip()
+    engine_arg = f'--physics-engine gz-physics-{engine}-plugin ' if engine else ''
+
     # Gazebo World
     world = context.launch_configurations['world']
     default_sdf_path = os.path.join(get_package_share_directory('gz_quadruped_playground'), 'worlds', world + '.sdf')
@@ -113,7 +121,7 @@ def launch_setup(context, *args, **kwargs):
                 [PathJoinSubstitution([FindPackageShare('ros_gz_sim'),
                                        'launch',
                                        'gz_sim.launch.py'])]),
-            launch_arguments=[('gz_args', [' -r -v 4 ', default_sdf_path])]),
+            launch_arguments=[('gz_args', [' -r -v 4 ', engine_arg, default_sdf_path])]),
         controller_launch
     ]
 
@@ -161,6 +169,13 @@ def generate_launch_description():
         description='The ROS2-Control Controllers'
     )
 
+    physics_engine = DeclareLaunchArgument(
+        'physics_engine',
+        default_value='',
+        description='dartsim | bullet-featherstone | bullet | tpe. '
+                    'Empty uses the gz default (dartsim).'
+    )
+
     sensors = DeclareLaunchArgument(
         'sensors',
         default_value='true',
@@ -173,5 +188,6 @@ def generate_launch_description():
         height,
         controller,
         sensors,
+        physics_engine,
         OpaqueFunction(function=launch_setup),
     ])
