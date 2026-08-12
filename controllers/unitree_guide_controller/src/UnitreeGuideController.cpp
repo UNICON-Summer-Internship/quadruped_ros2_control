@@ -71,9 +71,7 @@ namespace unitree_guide_controller
         }
 
         ctrl_component_.robot_model_->update();
-        // 보행 위상은 **sim 시간**으로 진행시킨다. 벽시계로 돌리면 RTF 가
-        // 떨어질 때 걸음과 물리가 어긋난다 (WaveGenerator.h 설명 참고).
-        ctrl_component_.wave_generator_->update(time.seconds());
+        ctrl_component_.wave_generator_->update();
         ctrl_component_.estimator_->update();
 
         if (mode_ == FSMMode::NORMAL)

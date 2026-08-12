@@ -30,13 +30,10 @@ WaveGenerator::WaveGenerator(const double period, const double st_ratio, const V
             exit(-1);
         }
     }
+    start_t_ = getSystemTime();
 }
 
-auto WaveGenerator::update(const double now_s) -> void {
-    if (start_t_ < 0.0) {
-        start_t_ = now_s;
-    }
-    now_t_ = now_s;
+auto WaveGenerator::update() -> void {
     calcWave(phase_, contact_, status_);
 
     if (status_ != status_past_) {
@@ -70,7 +67,7 @@ auto WaveGenerator::update(const double now_s) -> void {
 void WaveGenerator::calcWave(Vec4 &phase, VecInt4 &contact, const WaveStatus status) {
     switch (status) {
         case WaveStatus::WAVE_ALL: {
-            const double past_t = now_t_ - start_t_;
+            const double past_t = static_cast<double>(getSystemTime() - start_t_) * 1e-6;
             for (int i(0); i < 4; ++i) {
                 normal_t_(i) =
                         fmod(past_t + period_ - period_ * bias_(i), period_) / period_;
