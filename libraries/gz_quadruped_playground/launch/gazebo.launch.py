@@ -17,6 +17,9 @@ def launch_setup(context, *args, **kwargs):
     # External sensors (D435 RGBD, front camera, gpu_lidar). The IMU and foot
     # force sensors are not affected -- the controllers need them either way.
     sensors = context.launch_configurations['sensors'].lower() in ('true', '1', 'yes')
+    # lidar_only: keep the lidar, drop the cameras and the D435. Cameras dominate
+    # the cost under software rendering, and mapping only needs the lidar.
+    lidar_only = context.launch_configurations['lidar_only'].lower() in ('true', '1', 'yes')
 
     # Physics engine. gz-sim does NOT read <physics type="..."> from the world --
     # that is Gazebo Classic syntax. The engine comes from --physics-engine (here)
@@ -25,6 +28,15 @@ def launch_setup(context, *args, **kwargs):
     # and mesh contact handling differs a lot between engines.
     engine = context.launch_configurations['physics_engine'].strip()
     engine_arg = f'--physics-engine gz-physics-{engine}-plugin ' if engine else ''
+
+    # Server-side render engine. This is NOT cosmetic: the sensor pipeline
+    # (gpu_lidar, cameras) initialises the render engine inside the gz server,
+    # and ogre2 segfaults under this box's software GL (virgl):
+    #     Loading plugin [gz-rendering-ogre2] ... Segmentation fault
+    # So sensors:=true kills the server outright unless we force ogre.
+    # clearpath_ws/garisani_bringup/launch/gz_world.launch.py does the same.
+    render = context.launch_configurations['render_engine'].strip()
+    render_arg = f'--render-engine-server {render} ' if render else ''
 
     # Gazebo World
     world = context.launch_configurations['world']
@@ -47,7 +59,8 @@ def launch_setup(context, *args, **kwargs):
     xacro_file = os.path.join(pkg_path, 'xacro', 'robot.xacro')
     robot_description = xacro.process_file(xacro_file, mappings={
         'GAZEBO': 'true',
-        'EXTERNAL_SENSORS': 'true' if sensors else 'false'
+        'EXTERNAL_SENSORS': 'true' if sensors else 'false',
+        'LIDAR_ONLY': 'true' if lidar_only else 'false'
     }).toxml()
     robot_state_publisher = Node(
         package='robot_state_publisher',
@@ -92,9 +105,12 @@ def launch_setup(context, *args, **kwargs):
     bridge_args = ["/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock"]
     if sensors:
         bridge_args += [
-            "/camera/camera_info@sensor_msgs/msg/CameraInfo@gz.msgs.CameraInfo",
             "/scan@sensor_msgs/msg/LaserScan@gz.msgs.LaserScan",
             "/scan/points@sensor_msgs/msg/PointCloud2@gz.msgs.PointCloudPacked",
+        ]
+    if sensors and not lidar_only:
+        bridge_args += [
+            "/camera/camera_info@sensor_msgs/msg/CameraInfo@gz.msgs.CameraInfo",
             "/rgbd_d435/points@sensor_msgs/msg/PointCloud2@gz.msgs.PointCloudPacked"
             # "/odom@nav_msgs/msg/Odometry@gz.msgs.Odometry",
             # "/odom_with_covariance@nav_msgs/msg/Odometry@gz.msgs.OdometryWithCovariance",
@@ -127,13 +143,14 @@ def launch_setup(context, *args, **kwargs):
                 [PathJoinSubstitution([FindPackageShare('ros_gz_sim'),
                                        'launch',
                                        'gz_sim.launch.py'])]),
-            launch_arguments=[('gz_args', [' -r -v 4 ', engine_arg, default_sdf_path])]),
+            launch_arguments=[('gz_args', [' -r -v 4 ', engine_arg, render_arg,
+                                          default_sdf_path])]),
         controller_launch
     ]
     if show_rviz:
         nodes.insert(0, rviz)
 
-    if sensors:
+    if sensors and not lidar_only:
         nodes.append(Node(
             package="ros_gz_image",
             executable="image_bridge",
@@ -184,11 +201,26 @@ def generate_launch_description():
                     'costs more CPU than the gz server and drags RTF down.'
     )
 
+    render_engine = DeclareLaunchArgument(
+        'render_engine',
+        default_value=os.environ.get('GZ_RENDER_ENGINE_SERVER', 'ogre'),
+        description='Server-side render engine. ogre2 segfaults under software '
+                    'GL, which takes the whole server down as soon as any '
+                    'sensor is enabled. Empty to leave it to gz.'
+    )
+
     physics_engine = DeclareLaunchArgument(
         'physics_engine',
         default_value='',
         description='dartsim | bullet-featherstone | bullet | tpe. '
                     'Empty uses the gz default (dartsim).'
+    )
+
+    lidar_only = DeclareLaunchArgument(
+        'lidar_only',
+        default_value='false',
+        description='With sensors:=true, keep only the lidar (no cameras, no '
+                    'D435). Cameras dominate cost under software rendering.'
     )
 
     sensors = DeclareLaunchArgument(
@@ -203,7 +235,9 @@ def generate_launch_description():
         height,
         controller,
         sensors,
+        lidar_only,
         physics_engine,
+        render_engine,
         rviz,
         OpaqueFunction(function=launch_setup),
     ])

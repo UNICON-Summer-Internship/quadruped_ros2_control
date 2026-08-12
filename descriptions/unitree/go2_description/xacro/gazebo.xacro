@@ -247,8 +247,15 @@
   <xacro:foot_force_sensor name="FR" suffix="foot_fixed"/>
   <xacro:foot_force_sensor name="RR" suffix="foot_fixed"/>
 
+  <!-- EXTERNAL_SENSORS 는 카메라·RGBD·라이다를 한꺼번에 켜고 끈다. 그런데
+       소프트웨어 렌더링(virgl) 환경에서는 카메라류가 압도적으로 비싸고, 매핑에
+       필요한 건 라이다뿐이라 따로 켤 수 있어야 한다. LIDAR_ONLY=true 면
+       카메라와 D435 를 빼고 라이다만 남긴다. -->
   <xacro:arg name="EXTERNAL_SENSORS" default="false"/>
+  <xacro:arg name="LIDAR_ONLY" default="false"/>
+
   <xacro:if value="$(arg EXTERNAL_SENSORS)">
+    <xacro:unless value="$(arg LIDAR_ONLY)">
     <xacro:include filename="$(find gz_quadruped_playground)/models/D435/model.xacro"/>
 
     <xacro:d435 camID="1" name="d435">
@@ -284,6 +291,8 @@
         <topic>camera/image</topic>
       </sensor>
     </gazebo>
+    </xacro:unless>
+
     <gazebo reference="lidar">
       <sensor name='L1_lidar' type='gpu_lidar'>
         <topic>scan</topic>
