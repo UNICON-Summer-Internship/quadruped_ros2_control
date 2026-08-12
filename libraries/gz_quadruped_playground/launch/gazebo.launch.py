@@ -111,8 +111,14 @@ def launch_setup(context, *args, **kwargs):
         ]
     )
 
+    # RViz is optional. Under software rendering it is the single most
+    # expensive process in this launch -- measured at 143% CPU on a 4-core box,
+    # more than the gz server itself. Since this controller runs its gait on
+    # wall-clock time, that cost turns straight into falls. Off by default here;
+    # pass rviz:=true when you actually need it.
+    show_rviz = context.launch_configurations['rviz'].lower() in ('true', '1', 'yes')
+
     nodes = [
-        rviz,
         robot_state_publisher,
         gz_spawn_entity,
         gz_bridge_node,
@@ -124,6 +130,8 @@ def launch_setup(context, *args, **kwargs):
             launch_arguments=[('gz_args', [' -r -v 4 ', engine_arg, default_sdf_path])]),
         controller_launch
     ]
+    if show_rviz:
+        nodes.insert(0, rviz)
 
     if sensors:
         nodes.append(Node(
@@ -169,6 +177,13 @@ def generate_launch_description():
         description='The ROS2-Control Controllers'
     )
 
+    rviz = DeclareLaunchArgument(
+        'rviz',
+        default_value='false',
+        description='Launch RViz. Expensive under software rendering -- it '
+                    'costs more CPU than the gz server and drags RTF down.'
+    )
+
     physics_engine = DeclareLaunchArgument(
         'physics_engine',
         default_value='',
@@ -189,5 +204,6 @@ def generate_launch_description():
         controller,
         sensors,
         physics_engine,
+        rviz,
         OpaqueFunction(function=launch_setup),
     ])
