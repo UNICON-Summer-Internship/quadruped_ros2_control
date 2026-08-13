@@ -20,6 +20,9 @@ def launch_setup(context, *args, **kwargs):
     # lidar_only: keep the lidar, drop the cameras and the D435. Cameras dominate
     # the cost under software rendering, and mapping only needs the lidar.
     lidar_only = context.launch_configurations['lidar_only'].lower() in ('true', '1', 'yes')
+    # velodyne: swap the built-in L1 head lidar (200 deg, 10 m) for a VLP-16
+    # (360 deg, 131 m). Same topic, so nothing downstream changes.
+    velodyne = context.launch_configurations['velodyne'].lower() in ('true', '1', 'yes')
 
     # Physics engine. gz-sim does NOT read <physics type="..."> from the world --
     # that is Gazebo Classic syntax. The engine comes from --physics-engine (here)
@@ -60,7 +63,8 @@ def launch_setup(context, *args, **kwargs):
     robot_description = xacro.process_file(xacro_file, mappings={
         'GAZEBO': 'true',
         'EXTERNAL_SENSORS': 'true' if sensors else 'false',
-        'LIDAR_ONLY': 'true' if lidar_only else 'false'
+        'LIDAR_ONLY': 'true' if lidar_only else 'false',
+        'VELODYNE': 'true' if velodyne else 'false'
     }).toxml()
     robot_state_publisher = Node(
         package='robot_state_publisher',
@@ -216,6 +220,13 @@ def generate_launch_description():
                     'Empty uses the gz default (dartsim).'
     )
 
+    velodyne = DeclareLaunchArgument(
+        'velodyne',
+        default_value='false',
+        description='Use a Velodyne VLP-16 (360 deg, 131 m) instead of the '
+                    'built-in L1 head lidar (200 deg, 10 m). Same topic.'
+    )
+
     lidar_only = DeclareLaunchArgument(
         'lidar_only',
         default_value='false',
@@ -236,6 +247,7 @@ def generate_launch_description():
         controller,
         sensors,
         lidar_only,
+        velodyne,
         physics_engine,
         render_engine,
         rviz,

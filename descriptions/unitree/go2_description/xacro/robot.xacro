@@ -5,10 +5,13 @@
   <xacro:arg name="DEBUG" default="false"/>
   <xacro:arg name="GAZEBO" default="false"/>
   <xacro:arg name="CLASSIC" default="false"/>
+  <!-- Velodyne VLP-16 instead of the built-in L1 head lidar. See velodyne.xacro. -->
+  <xacro:arg name="VELODYNE" default="false"/>
 
   <xacro:include filename="$(find go2_description)/xacro/const.xacro"/>
   <xacro:include filename="$(find go2_description)/xacro/materials.xacro"/>
   <xacro:include filename="$(find go2_description)/xacro/leg.xacro"/>
+  <xacro:include filename="$(find go2_description)/xacro/velodyne.xacro"/>
 
   <xacro:if value="$(arg GAZEBO)">
     <xacro:if value="$(arg CLASSIC)">
@@ -141,6 +144,15 @@
 
   <link name="lidar">
   </link>
+
+  <!-- 몸통 위, 수평. 360도 스캔이 몸통에 가리지 않도록 위로 올린다.
+       (clearpath_ws 는 base_link 기준 0.2 0 0.08 인데, 그쪽은 몸통 원점이
+        달라서 높이만 맞춰 옮겼다.) -->
+  <xacro:if value="$(arg VELODYNE)">
+    <xacro:velodyne_vlp16 parent="trunk">
+      <origin rpy="0 0 0" xyz="0.0 0 0.10"/>
+    </xacro:velodyne_vlp16>
+  </xacro:if>
 
   <xacro:leg name="FR" mirror="-1" mirror_dae="False" front_hind="1" front_hind_dae="True"/>
   <xacro:leg name="FL" mirror="1" mirror_dae="True" front_hind="1" front_hind_dae="True"/>

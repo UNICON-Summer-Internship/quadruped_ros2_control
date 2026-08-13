@@ -293,6 +293,7 @@
     </gazebo>
     </xacro:unless>
 
+    <xacro:unless value="$(arg VELODYNE)">
     <gazebo reference="lidar">
       <sensor name='L1_lidar' type='gpu_lidar'>
         <topic>scan</topic>
@@ -323,5 +324,12 @@
         <visualize>true</visualize>
       </sensor>
     </gazebo>
+    </xacro:unless>
+
+    <!-- 같은 `scan` 토픽으로 낸다. 둘 중 하나만 켜지므로 겹치지 않고,
+         브리지와 /scan/points 소비자들은 그대로 쓸 수 있다. -->
+    <xacro:if value="$(arg VELODYNE)">
+      <xacro:velodyne_vlp16_gazebo topic="scan"/>
+    </xacro:if>
   </xacro:if>
 </robot>
