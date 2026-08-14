@@ -106,7 +106,11 @@ def launch_setup(context, *args, **kwargs):
     )
 
     # /clock is always bridged; the sensor topics only exist when the sensors do.
-    bridge_args = ["/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock"]
+    # odom_gz 는 항법이 쓰는 위치다. SLAM 과 분리해야 한다 — SLAM 을 항법의
+    # 위치원으로 쓰면 scan_gate 를 닫는 순간 로봇이 자기 위치를 잃는다
+    # (gazebo.xacro 의 OdometryPublisher 설명 참고).
+    bridge_args = ["/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock",
+                   "/odom_gz@nav_msgs/msg/Odometry[gz.msgs.Odometry"]
     if sensors:
         bridge_args += [
             "/scan@sensor_msgs/msg/LaserScan@gz.msgs.LaserScan",
