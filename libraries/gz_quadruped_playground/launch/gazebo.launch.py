@@ -43,7 +43,17 @@ def launch_setup(context, *args, **kwargs):
 
     # Gazebo World
     world = context.launch_configurations['world']
-    default_sdf_path = os.path.join(get_package_share_directory('gz_quadruped_playground'), 'worlds', world + '.sdf')
+    # 절대경로(또는 .sdf 로 끝나는 경로)를 그대로 받는다.
+    #
+    # 원래는 이 패키지의 worlds/ 안에서만 찾았다. 그래서 다른 패키지의 월드를
+    # 쓰려면 install 디렉토리에 **손으로 심볼릭 링크를 걸어야** 했는데, 그건
+    # 어디에도 기록이 안 남는다 — 새로 받은 사람은 "Fuel world download failed"
+    # 만 보고 원인을 알 수가 없다. 실제로 그렇게 막혔다.
+    if world.endswith('.sdf') or os.path.isabs(world):
+        default_sdf_path = world
+    else:
+        default_sdf_path = os.path.join(
+            get_package_share_directory('gz_quadruped_playground'), 'worlds', world + '.sdf')
     print(default_sdf_path)
 
     # Init Height When spawn the model
