@@ -125,10 +125,28 @@ def launch_setup(context, *args, **kwargs):
             # "/tf@tf2_msgs/msg/TFMessage@gz.msgs.Pose_V"
         ]
 
+    # ros_ns 를 주면 **ROS 쪽 이름만** 접두사를 붙인다. gz 쪽 이름은 그대로다.
+    #
+    # 지상 로봇 둘을 동시에 돌리려면 필요하다 — 안 나누면 A200 과 Go2 가 같은
+    # /scan/points, /odom_gz 를 쓰게 되어 서로의 센서를 본다.
+    #
+    # **remap 으로 해야 한다.** 브리지 노드에 namespace 를 주면 gz 쪽 이름까지
+    # 같이 바뀌어서 연결이 끊긴다. arguments 의 왼쪽 이름이 gz 토픽이기 때문이다.
+    # /clock 은 전역으로 둔다 — 시뮬 전체가 하나의 시계를 쓴다.
+    ros_ns = context.launch_configurations.get('ros_ns', '').strip('/')
+    bridge_remaps = []
+    if ros_ns:
+        for a in bridge_args:
+            t = a.split('@')[0]
+            if t == '/clock':
+                continue
+            bridge_remaps.append((t, f'/{ros_ns}{t}'))
+
     gz_bridge_node = Node(
         package="ros_gz_bridge",
         executable="parameter_bridge",
         arguments=bridge_args,
+        remappings=bridge_remaps,
         output="screen",
         parameters=[
             {'use_sim_time': True},
@@ -244,12 +262,19 @@ def generate_launch_description():
         description='Enable the external sensors (D435 RGBD, front camera, lidar)'
     )
 
+    # 지상 로봇 둘을 동시에 돌릴 때 ROS 토픽을 나눈다. 비우면 예전과 같다.
+    ros_ns = DeclareLaunchArgument(
+        'ros_ns', default_value='',
+        description='ROS 토픽 접두사 (예: go2). gz 쪽 이름은 안 바뀐다.'
+    )
+
     return LaunchDescription([
         world,
         pkg_description,
         height,
         controller,
         sensors,
+        ros_ns,
         lidar_only,
         velodyne,
         physics_engine,
