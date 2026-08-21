@@ -1,16 +1,37 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <!-- EXTERNAL_SENSORS 는 카메라·RGBD·라이다를 한꺼번에 켜고 끈다. 그런데
+       소프트웨어 렌더링(virgl) 환경에서는 카메라류가 압도적으로 비싸고, 매핑에
+       필요한 건 라이다뿐이라 따로 켤 수 있어야 한다. LIDAR_ONLY=true 면
+       카메라와 D435 를 빼고 라이다만 남긴다. -->
+  <!-- 로봇 두 대 이상을 한 월드에 넣으려면 제어기 노드를 나눠야 한다.
+       **런치 인자로는 못 바꾼다** — gz_quadruped_hardware 플러그인이
+       네임스페이스를 SDF 의 <ros><namespace> 에서만 읽기 때문이다
+       (gz_quadruped_plugin.cpp 의 sdfRos->GetElement("namespace")).
+       그래서 xacro 로 받아 SDF 에 심는다. 비우면 예전처럼 전역이다. -->
+  <xacro:arg name="ROS_NS" default=""/>
+  <xacro:arg name="INIT_STAND" default="false"/>
   <xacro:include filename="$(find gz_quadruped_hardware)/xacro/foot_force_sensor.xacro"/>
-  <!-- **접힌 자세로 스폰하지 않는다 — 시도했다가 되돌렸다.**
-       다리를 편 채 떨어져 몸통이 다리를 깔면 기립이 실패한다고 보고,
-       ros2_control 의 initial_value 로 접힌 자세(down_pos)를 넣어 봤다.
-       스폰 자세는 실제로 바뀌었지만(calf 4개 전부 -2.8) **로봇이 튕겨
-       나갔다.** 상태 초기값만 -2.8 이고 명령 초기값은 0(다리 폄)이라,
-       컨트롤러가 붙는 순간 관절이 그쪽으로 튀기 때문이다.
+  <!-- **스폰 자세를 고를 수 있다 (INIT_STAND, 기본 꺼짐).**
 
-       기립이 안 되던 진짜 원인은 자세가 아니라 토픽 경로였다 —
-       컨트롤러가 절대경로 "/control_input" 을 구독해서 네임스페이스
-       아래의 명령을 못 받고 있었다 (UnitreeGuideController.cpp 참고). -->
+       true 면 12관절을 stand_pos(hip 0, thigh 0.8, calf -1.5)로 두고 스폰한다.
+       제어기가 기립 목표로 쓰는 자세라 다리가 이미 몸통 밑에 모여 있다.
+
+       **기본이 꺼짐인 이유: 켤 필요가 없었다.** 이걸 만든 동기는 "다리를 편
+       채 떨어지면 착지 자세가 매번 달라져 기립이 확률적으로 실패한다" 였는데,
+       그 실패 통계는 물리 엔진을 bullet-featherstone 으로 잘못 바꿔 둔 기간에
+       잰 것이었다. dartsim 으로 되돌린 뒤 z=0.5 기본값으로 5판 연속 기립했고
+       착지 위치도 소수점 셋째 자리까지 같았다. 랜덤이 아니다.
+       그래서 기능만 남기고 끄기로 했다.
+
+       **down_pos(calf -2.8)를 넣으면 안 된다.** 예전에 그걸 넣었다가 로봇이
+       튕겨 나갔다. -2.8 은 calf 관절 한계값이고, gz_system 은 이 값을 램프가
+       아니라 JointPositionReset 으로 **텔레포트**시킨다 (gz_system.cpp:421).
+       한계 자세로 순간이동하면 종아리와 허벅지가 서로 파고들어 접촉 임펄스가
+       폭발한다. stand_pos 는 한계에서 멀어서 안전하다.
+
+       켤 때는 스폰 높이도 같이 낮춘다 (z:=0.32). 리셋 전 몇 스텝은 아직
+       다리를 편 상태(0.448 m)라 너무 낮으면 발이 지면을 파고든다. -->
   <ros2_control name="GazeboSystem" type="system">
     <hardware>
       <plugin>gz_quadruped_hardware/GazeboSimSystem</plugin>
@@ -23,7 +44,11 @@
       <command_interface name="kp"/>
       <command_interface name="kd"/>
 
-      <state_interface name="position"/>
+      <state_interface name="position">
+        <xacro:if value="$(arg INIT_STAND)">
+          <param name="initial_value">0.0</param>
+        </xacro:if>
+      </state_interface>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
@@ -34,7 +59,11 @@
       <command_interface name="effort"/>
       <command_interface name="kp"/>
       <command_interface name="kd"/>
-      <state_interface name="position"/>
+      <state_interface name="position">
+        <xacro:if value="$(arg INIT_STAND)">
+          <param name="initial_value">0.8</param>
+        </xacro:if>
+      </state_interface>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
@@ -45,7 +74,11 @@
       <command_interface name="effort"/>
       <command_interface name="kp"/>
       <command_interface name="kd"/>
-      <state_interface name="position"/>
+      <state_interface name="position">
+        <xacro:if value="$(arg INIT_STAND)">
+          <param name="initial_value">-1.5</param>
+        </xacro:if>
+      </state_interface>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
@@ -56,7 +89,11 @@
       <command_interface name="effort"/>
       <command_interface name="kp"/>
       <command_interface name="kd"/>
-      <state_interface name="position"/>
+      <state_interface name="position">
+        <xacro:if value="$(arg INIT_STAND)">
+          <param name="initial_value">0.0</param>
+        </xacro:if>
+      </state_interface>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
@@ -67,7 +104,11 @@
       <command_interface name="effort"/>
       <command_interface name="kp"/>
       <command_interface name="kd"/>
-      <state_interface name="position"/>
+      <state_interface name="position">
+        <xacro:if value="$(arg INIT_STAND)">
+          <param name="initial_value">0.8</param>
+        </xacro:if>
+      </state_interface>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
@@ -78,7 +119,11 @@
       <command_interface name="effort"/>
       <command_interface name="kp"/>
       <command_interface name="kd"/>
-      <state_interface name="position"/>
+      <state_interface name="position">
+        <xacro:if value="$(arg INIT_STAND)">
+          <param name="initial_value">-1.5</param>
+        </xacro:if>
+      </state_interface>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
@@ -89,7 +134,11 @@
       <command_interface name="effort"/>
       <command_interface name="kp"/>
       <command_interface name="kd"/>
-      <state_interface name="position"/>
+      <state_interface name="position">
+        <xacro:if value="$(arg INIT_STAND)">
+          <param name="initial_value">0.0</param>
+        </xacro:if>
+      </state_interface>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
@@ -100,7 +149,11 @@
       <command_interface name="effort"/>
       <command_interface name="kp"/>
       <command_interface name="kd"/>
-      <state_interface name="position"/>
+      <state_interface name="position">
+        <xacro:if value="$(arg INIT_STAND)">
+          <param name="initial_value">0.8</param>
+        </xacro:if>
+      </state_interface>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
@@ -111,7 +164,11 @@
       <command_interface name="effort"/>
       <command_interface name="kp"/>
       <command_interface name="kd"/>
-      <state_interface name="position"/>
+      <state_interface name="position">
+        <xacro:if value="$(arg INIT_STAND)">
+          <param name="initial_value">-1.5</param>
+        </xacro:if>
+      </state_interface>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
@@ -122,7 +179,11 @@
       <command_interface name="effort"/>
       <command_interface name="kp"/>
       <command_interface name="kd"/>
-      <state_interface name="position"/>
+      <state_interface name="position">
+        <xacro:if value="$(arg INIT_STAND)">
+          <param name="initial_value">0.0</param>
+        </xacro:if>
+      </state_interface>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
@@ -133,7 +194,11 @@
       <command_interface name="effort"/>
       <command_interface name="kp"/>
       <command_interface name="kd"/>
-      <state_interface name="position"/>
+      <state_interface name="position">
+        <xacro:if value="$(arg INIT_STAND)">
+          <param name="initial_value">0.8</param>
+        </xacro:if>
+      </state_interface>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
@@ -144,7 +209,11 @@
       <command_interface name="effort"/>
       <command_interface name="kp"/>
       <command_interface name="kd"/>
-      <state_interface name="position"/>
+      <state_interface name="position">
+        <xacro:if value="$(arg INIT_STAND)">
+          <param name="initial_value">-1.5</param>
+        </xacro:if>
+      </state_interface>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
     </joint>
@@ -285,16 +354,6 @@
   <xacro:foot_force_sensor name="FR" suffix="foot_fixed"/>
   <xacro:foot_force_sensor name="RR" suffix="foot_fixed"/>
 
-  <!-- EXTERNAL_SENSORS 는 카메라·RGBD·라이다를 한꺼번에 켜고 끈다. 그런데
-       소프트웨어 렌더링(virgl) 환경에서는 카메라류가 압도적으로 비싸고, 매핑에
-       필요한 건 라이다뿐이라 따로 켤 수 있어야 한다. LIDAR_ONLY=true 면
-       카메라와 D435 를 빼고 라이다만 남긴다. -->
-  <!-- 로봇 두 대 이상을 한 월드에 넣으려면 제어기 노드를 나눠야 한다.
-       **런치 인자로는 못 바꾼다** — gz_quadruped_hardware 플러그인이
-       네임스페이스를 SDF 의 <ros><namespace> 에서만 읽기 때문이다
-       (gz_quadruped_plugin.cpp 의 sdfRos->GetElement("namespace")).
-       그래서 xacro 로 받아 SDF 에 심는다. 비우면 예전처럼 전역이다. -->
-  <xacro:arg name="ROS_NS" default=""/>
   <xacro:arg name="EXTERNAL_SENSORS" default="false"/>
   <xacro:arg name="LIDAR_ONLY" default="false"/>
 
