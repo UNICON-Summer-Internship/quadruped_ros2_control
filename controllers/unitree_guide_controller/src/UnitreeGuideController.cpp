@@ -139,8 +139,19 @@ namespace unitree_guide_controller
     controller_interface::CallbackReturn UnitreeGuideController::on_configure(
         const rclcpp_lifecycle::State& /*previous_state*/)
     {
+        // **상대경로로 둔다.** "/control_input" 로 절대경로를 쓰면 컨트롤러를
+        // 네임스페이스 아래에 띄워도 구독은 전역으로 간다. 그러면 로봇 두 대가
+        // 같은 토픽을 보게 되고, 반대로 어댑터가 /go2/control_input 로 내면
+        // 아무도 안 받는다 — 명령이 조용히 사라진다.
+        //
+        // 실제로 겪었다: 컨트롤러 3개가 active 인데 2 를 여덟 번 보내도 FSM
+        // 전이가 하나도 없었다. 노드는 /go2/unitree_guide_controller 인데
+        // 구독은 /control_input 이었다.
+        //
+        // 상대경로면 컨트롤러가 뜬 네임스페이스를 그대로 따라간다. 전역으로
+        // 띄우면 예전과 똑같이 /control_input 이다.
         control_input_subscription_ = get_node()->create_subscription<control_input_msgs::msg::Inputs>(
-            "/control_input", 10, [this](const control_input_msgs::msg::Inputs::SharedPtr msg)
+            "control_input", 10, [this](const control_input_msgs::msg::Inputs::SharedPtr msg)
             {
                 // Handle message
                 ctrl_interfaces_.control_inputs_.command = msg->command;
