@@ -1,5 +1,9 @@
 # Controller Manager configuration
-controller_manager:
+# **와일드카드를 쓴다.** 네임스페이스를 주면 노드가 /go2/controller_manager 로
+# 뜨는데, 키가 controller_manager: 면 파라미터가 안 붙어서 update_rate 가 없다.
+# 그러면 controller_manager 가 초기화에 실패하고, 그 플러그인이 gz 업데이트
+# 루프를 잡고 있어서 **시뮬 전체가 멎는다** (gz model --list 조차 타임아웃).
+/**/controller_manager:
   ros__parameters:
     update_rate: 1000  # Hz
 
@@ -19,12 +23,12 @@ controller_manager:
     rl_quadruped_controller:
       type: rl_quadruped_controller/LeggedGymController
 
-imu_sensor_broadcaster:
+/**/imu_sensor_broadcaster:
   ros__parameters:
     sensor_name: "imu_sensor"
     frame_id: "imu_link"
 
-ocs2_quadruped_controller:
+/**/ocs2_quadruped_controller:
   ros__parameters:
     update_rate: 200  # Hz
     robot_pkg: "go2_description"
@@ -84,7 +88,7 @@ ocs2_quadruped_controller:
       - FR_foot_force
       - RR_foot_force
 
-unitree_guide_controller:
+/**/unitree_guide_controller:
   ros__parameters:
     update_rate: 200  # Hz
     joints:
@@ -134,7 +138,7 @@ unitree_guide_controller:
       - linear_acceleration.y
       - linear_acceleration.z
 
-rl_quadruped_controller:
+/**/rl_quadruped_controller:
   ros__parameters:
     update_rate: 200  # Hz
     robot_pkg: "go2_description"
