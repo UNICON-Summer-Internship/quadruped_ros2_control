@@ -161,8 +161,12 @@ namespace unitree_guide_controller
                 ctrl_interfaces_.control_inputs_.ry = msg->ry;
             });
 
+        // **상대 경로여야 한다.** 절대 경로 "/robot_description" 을 구독하면
+        // 네임스페이스를 줘도 전역을 본다. 로봇을 두 대 띄우면 Go2 의 제어기가
+        // A200 의 URDF 를 읽고, 관절 이름이 달라서 조용히 어긋난다.
+        // (control_input 에서 이미 같은 버그를 고쳤다.)
         robot_description_subscription_ = get_node()->create_subscription<std_msgs::msg::String>(
-            "/robot_description", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local(),
+            "robot_description", rclcpp::QoS(rclcpp::KeepLast(1)).transient_local(),
             [this](const std_msgs::msg::String::SharedPtr msg)
             {
                 ctrl_component_.robot_model_ = std::make_shared<QuadrupedRobot>(
